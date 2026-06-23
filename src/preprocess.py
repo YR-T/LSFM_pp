@@ -2,10 +2,11 @@ from pathlib import Path
 import numpy as np
 import tifffile as tiff
 import matplotlib.pyplot as plt
+import pystripe
 
-from scipy.ndimage import gaussian_filter, median_filter
+from scipy.ndimage import gaussian_filter
 from skimage.morphology import disk, opening
-from skimage.exposure import rescale_intensity
+
 
 def robust_percentile_clip(img, low=0.1, high=99.9):
     lo, hi = np.percentile(img, [low, high])
@@ -35,43 +36,17 @@ def flatfield_like_correction(img, sigma=120):
     corrected[corrected < 0] = 0
     return corrected.astype(np.float32), field.astype(np.float32)
 
-
-def simple_destripe(img, axis=0, sigma=20, strength=1.0):
-    """
-    Simple additive stripe correction.
-
-    axis=0: correct column-wise stripes, i.e. vertical stripes.
-    axis=1: correct row-wise stripes, i.e. horizontal stripes.
-
-    This estimates a stripe profile from median intensity along one axis,
-    smooths it, and subtracts the residual profile.
-    """
-    img_float = img.astype(np.float32)
-
-    if axis == 0:
-        profile = np.median(img_float, axis=0)  # per column
-        smooth_profile = gaussian_filter(profile, sigma=sigma)
-        stripe_profile = profile - smooth_profile
-        corrected = img_float - strength * stripe_profile[None, :]
-    elif axis == 1:
-        profile = np.median(img_float, axis=1)  # per row
-        smooth_profile = gaussian_filter(profile, sigma=sigma)
-        stripe_profile = profile - smooth_profile
-        corrected = img_float - strength * stripe_profile[:, None]
-    else:
-        raise ValueError("axis must be 0 or 1")
-
-    corrected[corrected < 0] = 0
-    return corrected.astype(np.float32), stripe_profile.astype(np.float32)
-
-
 def subtract_background_morphology(img, radius=40):
     """
     Morphological opening background subtraction.
     radius should be much larger than expected c-Fos blob radius.
     """
     img_float = img.astype(np.float32)
-    bg = opening(img_float, footprint=disk(radius))
+    selem = disk(radius)
+    try:
+        bg = opening(img_float, footprint=selem)
+    except TypeError:
+        bg = opening(img_float, selem=selem)
     sub = img_float - bg
     sub[sub < 0] = 0
     return sub.astype(np.float32), bg.astype(np.float32)
@@ -109,10 +84,10 @@ def preprocess_one_image(
     in_tif,
     out_dir,
     shading_sigma=120,
-    stripe_axis=0,
-    stripe_sigma=30,
-    stripe_strength=1.0,
-    bg_radius=40,
+    stripe_sigma=(128, 256),
+    stripe_level=7,
+    stripe_wavelet='db2',
+    bg_radius=20,
 ):
     in_tif = Path(in_tif)
     out_dir = Path(out_dir)
@@ -128,6 +103,9 @@ def preprocess_one_image(
     # 2. retrospective flat/shading correction
     ffc, field = flatfield_like_correction(raw0, sigma=shading_sigma)
 
+# filter a single image
+    destriped = pystripe.filter_streaks(ffc, sigma=stripe_sigma, level=stripe_level, wavelet=stripe_wavelet)
+
 #     3. improved destriping
 #    destriped, stripe_field = local_horizontal_destripe(
 #    ffc,
@@ -137,7 +115,6 @@ def preprocess_one_image(
 #    strength=0.8,
 #    presmooth_size=5,
 #    )
-    destriped = ffc
     # 4. background subtraction
     bg_sub, bg = subtract_background_morphology(destriped, radius=bg_radius)
 
@@ -164,94 +141,8 @@ def preprocess_one_image(
         "output": str(out_dir / f"{stem}_preprocessed.tif"),
         "offset": float(offset),
         "shading_sigma": shading_sigma,
-        "stripe_axis": stripe_axis,
         "stripe_sigma": stripe_sigma,
-        "stripe_strength": stripe_strength,
+        "stripe_level": stripe_level,
+        "stripe_wavelet": stripe_wavelet,
         "bg_radius": bg_radius,
     }
-
-import numpy as np
-from scipy.ndimage import gaussian_filter, median_filter
-from scipy.interpolate import interp1d
-
-def local_horizontal_destripe(
-    img,
-    block_width=64,
-    y_smooth=4,
-    x_smooth=1,
-    strength=1.0,
-    presmooth_size=5,
-):
-    """
-    Remove locally varying, nearly-horizontal stripe artifacts
-    without rotating/resampling the image.
-
-    img: 2D image
-    block_width: width of local x-blocks used to estimate row profiles
-    y_smooth: smoothing of row profiles
-    x_smooth: smoothing across neighboring blocks
-    strength: subtraction strength
-    presmooth_size: median filter to reduce influence of bright spots
-    """
-    img = img.astype(np.float32)
-    h, w = img.shape
-
-    # suppress bright small blobs before estimating stripe profile
-    work = median_filter(img, size=presmooth_size)
-
-    centers = []
-    profiles = []
-
-    for x0 in range(0, w, block_width):
-        x1 = min(w, x0 + block_width)
-        block = work[:, x0:x1]
-
-        # row-wise robust profile within this x block
-        prof = np.median(block, axis=1)
-
-        # remove slow y background, keep band-like component
-        slow = gaussian_filter(prof, sigma=max(y_smooth * 4, 12))
-        stripe_prof = prof - slow
-
-        # smooth stripe profile along y
-        stripe_prof = gaussian_filter(stripe_prof, sigma=y_smooth)
-
-        centers.append((x0 + x1 - 1) / 2)
-        profiles.append(stripe_prof)
-
-    centers = np.asarray(centers)
-    profiles = np.asarray(profiles)  # shape: n_blocks x h
-
-    # smooth across x-blocks
-    if profiles.shape[0] > 1 and x_smooth > 0:
-        profiles = gaussian_filter(profiles, sigma=(x_smooth, 0))
-
-    # interpolate stripe profile for every x
-    xs = np.arange(w)
-    f = interp1d(
-        centers,
-        profiles,
-        axis=0,
-        kind="linear",
-        bounds_error=False,
-        fill_value=(profiles[0], profiles[-1]),
-    )
-    stripe_profiles_x = f(xs)  # shape: w x h
-
-    stripe_field = stripe_profiles_x.T  # h x w
-
-    corrected = img - strength * stripe_field
-    corrected[corrected < 0] = 0
-
-    return corrected.astype(np.float32), stripe_field.astype(np.float32)
-
-# Example
-# preprocess_one_image(
-#     "sample_slice.tif",
-#     "preprocess_test",
-#     shading_sigma=120,
-#     stripe_axis=0,      # 0 if vertical stripes; 1 if horizontal stripes
-#     stripe_sigma=30,
-#     stripe_strength=0.8,
-#     bg_radius=40,
-# )

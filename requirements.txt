@@ -1,0 +1,6 @@
+numpy
+scipy
+tifffile
+matplotlib
+scikit-image
+seaborn

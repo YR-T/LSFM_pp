@@ -4,3 +4,4 @@ tifffile
 matplotlib
 scikit-image
 seaborn
+# pip install https://github.com/chunglabmit/pystripe/archive/master.zip

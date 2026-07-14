@@ -18,7 +18,10 @@ import pystripe
 from scipy.ndimage import rotate
 import tifffile as tiff
 
-from preprocess import flatfield_like_correction, subtract_background_morphology
+try:
+    from preprocess import flatfield_like_correction, subtract_background_morphology
+except ImportError:
+    from .preprocess import flatfield_like_correction, subtract_background_morphology
 
 
 def _set_below_normal_priority():
@@ -34,6 +37,9 @@ def _set_below_normal_priority():
 
 def _preprocess_at_angle(raw, correction_angle, pad=128):
     raw = np.asarray(raw, dtype=np.float32)
+    restore_transpose = raw.shape[1] > raw.shape[0]
+    if restore_transpose:
+        raw = raw.T
     offset = float(np.percentile(raw, 0.05))
     raw -= offset
     raw[raw < 0] = 0
@@ -63,6 +69,8 @@ def _preprocess_at_angle(raw, correction_angle, pad=128):
         restored, sigma=120, reference_level=100, max_gain=3.0
     )
     preprocessed, _ = subtract_background_morphology(ffc, radius=20)
+    if restore_transpose:
+        preprocessed = preprocessed.T
     return preprocessed, offset
 
 

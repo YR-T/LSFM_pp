@@ -35,6 +35,13 @@ def parse_slice_number(path):
     return int(match.group(1))
 
 
+def dataset_stem(path):
+    match = SLICE_PATTERN.search(path.name)
+    if match is None:
+        raise ValueError(f"Could not infer dataset name from {path.name}")
+    return path.name[: match.start()]
+
+
 def scijava_path(path):
     return path.resolve().as_posix()
 
@@ -211,12 +218,19 @@ def main():
     )
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--java-memory", default="12g")
+    parser.add_argument("--expected-slices", type=int, default=180)
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 
     images = sorted(args.input_dir.glob("*.tif"), key=parse_slice_number)
-    if len(images) != 180:
-        raise RuntimeError(f"Expected 180 TIFF files, found {len(images)} in {args.input_dir}")
+    if len(images) != args.expected_slices:
+        raise RuntimeError(
+            f"Expected {args.expected_slices} TIFF files, found {len(images)} in {args.input_dir}"
+        )
+    names = {dataset_stem(image) for image in images}
+    if len(names) != 1:
+        raise RuntimeError(f"Expected one dataset in {args.input_dir}, found {sorted(names)}")
+    input_stem = names.pop()
     if not args.fiji_exe.is_file():
         raise FileNotFoundError(args.fiji_exe)
     if not args.groovy_script.is_file():
@@ -249,10 +263,13 @@ def main():
             result = future.result()
             results.append(result)
             state = "cached" if result.skipped else f"{result.seconds:.1f}s"
-            print(f"[{completed_count:03d}/180] {result.image.name}: {state}", flush=True)
+            print(
+                f"[{completed_count:03d}/{len(images)}] {result.image.name}: {state}",
+                flush=True,
+            )
 
     raw_by_image = {result.image: result.xml for result in results}
-    final_xml = args.output_dir / "042926_MAY08R_FOS_1_retake_c_filtered_spots.xml"
+    final_xml = args.output_dir / f"{input_stem}_filtered_spots.xml"
     summary_csv = args.output_dir / "filter_summary_by_slice.csv"
     total_detected = 0
     total_selected = 0

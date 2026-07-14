@@ -5,6 +5,7 @@ __pycache__/
 .DS_Store
 /data/
 /outputs/
+/migrate_data_outputs_to_e.ps1
 *.tif
 *.xml
 *.log

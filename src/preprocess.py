@@ -25,14 +25,24 @@ def estimate_shading_field(img, sigma=80, eps=1e-6):
     return smooth
 
 
-def flatfield_like_correction(img, sigma=120):
+def flatfield_like_correction(
+    img,
+    sigma=120,
+    reference_level=100,
+    max_gain=3.0,
+):
     """
     Retrospective shading correction:
-    divide by low-frequency field and preserve median intensity scale.
+    divide by a low-frequency field using a fixed intensity scale.
+
+    A fixed reference level keeps the scale consistent between slices, while
+    max_gain prevents dark background regions from being over-amplified.
     """
     img_float = img.astype(np.float32)
     field = estimate_shading_field(img_float, sigma=sigma)
-    corrected = img_float / field * np.median(field)
+    gain = reference_level / field
+    gain = np.minimum(gain, max_gain)
+    corrected = img_float * gain
     corrected[corrected < 0] = 0
     return corrected.astype(np.float32), field.astype(np.float32)
 
@@ -80,6 +90,64 @@ def save_qc_panel(out_png, raw, ffc, destriped, bg_sub, field=None, bg=None):
     plt.close(fig)
 
 
+def preprocess_image(
+    raw,
+    shading_sigma=120,
+    stripe_sigma=(128, 256),
+    stripe_level=7,
+    stripe_wavelet='db2',
+    bg_radius=20,
+    shading_reference_level=100,
+    shading_max_gain=3.0,
+    return_intermediates=False,
+):
+    """Preprocess one 2D image already loaded in memory.
+
+    The returned dictionary always contains ``preprocessed`` and ``offset``.
+    Intermediate arrays are included only when ``return_intermediates`` is
+    True, which keeps batch processing from retaining unnecessary arrays.
+    """
+    raw = np.asarray(raw, dtype=np.float32)
+
+    # 1. crude offset correction: subtract very low percentile
+    offset = np.percentile(raw, 0.05)
+    raw0 = raw - offset
+    raw0[raw0 < 0] = 0
+
+    # 2. retrospective flat/shading correction
+    ffc, field = flatfield_like_correction(
+        raw0,
+        sigma=shading_sigma,
+        reference_level=shading_reference_level,
+        max_gain=shading_max_gain,
+    )
+
+    # 3. filter a single image
+    destriped = pystripe.filter_streaks(
+        ffc,
+        sigma=stripe_sigma,
+        level=stripe_level,
+        wavelet=stripe_wavelet,
+    )
+
+    # 4. background subtraction
+    bg_sub, bg = subtract_background_morphology(destriped, radius=bg_radius)
+
+    result = {
+        "preprocessed": bg_sub,
+        "offset": float(offset),
+    }
+    if return_intermediates:
+        result.update({
+            "raw": raw0,
+            "ffc": ffc,
+            "destriped": destriped,
+            "field": field,
+            "background": bg,
+        })
+    return result
+
+
 def preprocess_one_image(
     in_tif,
     out_dir,
@@ -88,59 +156,69 @@ def preprocess_one_image(
     stripe_level=7,
     stripe_wavelet='db2',
     bg_radius=20,
+    shading_reference_level=100,
+    shading_max_gain=3.0,
+    save_intermediates=True,
 ):
+    """Preprocess one TIFF image and save the background-subtracted result.
+
+    When ``save_intermediates`` is True, the shading-corrected image, the
+    destriped image, and a QC panel are saved in addition to the final image.
+    Set it to False for batch processing that only needs the final output.
+    """
     in_tif = Path(in_tif)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    raw = tiff.imread(in_tif).astype(np.float32)
-
-    # 1. crude offset correction: subtract very low percentile
-    offset = np.percentile(raw, 0.05)
-    raw0 = raw - offset
-    raw0[raw0 < 0] = 0
-
-    # 2. retrospective flat/shading correction
-    ffc, field = flatfield_like_correction(raw0, sigma=shading_sigma)
-
-# filter a single image
-    destriped = pystripe.filter_streaks(ffc, sigma=stripe_sigma, level=stripe_level, wavelet=stripe_wavelet)
-
-#     3. improved destriping
-#    destriped, stripe_field = local_horizontal_destripe(
-#    ffc,
-#    block_width=64,
-#    y_smooth=3,
-#    x_smooth=1,
-#    strength=0.8,
-#    presmooth_size=5,
-#    )
-    # 4. background subtraction
-    bg_sub, bg = subtract_background_morphology(destriped, radius=bg_radius)
-
-    # save outputs
-    stem = in_tif.stem
-    tiff.imwrite(out_dir / f"{stem}_preprocessed.tif", bg_sub.astype(np.float32))
-    tiff.imwrite(out_dir / f"{stem}_ffc.tif", ffc.astype(np.float32))
-    tiff.imwrite(out_dir / f"{stem}_destriped.tif", destriped.astype(np.float32))
-
-    # np.save(out_dir / f"{stem}_stripe_field.npy", stripe_field)
-
-    save_qc_panel(
-        out_dir / f"{stem}_qc.png",
-        raw=raw0,
-        ffc=ffc,
-        destriped=destriped,
-        bg_sub=bg_sub,
-        field=field,
-        bg=bg,
+    raw = tiff.imread(in_tif)
+    processed = preprocess_image(
+        raw,
+        shading_sigma=shading_sigma,
+        stripe_sigma=stripe_sigma,
+        stripe_level=stripe_level,
+        stripe_wavelet=stripe_wavelet,
+        bg_radius=bg_radius,
+        shading_reference_level=shading_reference_level,
+        shading_max_gain=shading_max_gain,
+        return_intermediates=save_intermediates,
     )
+    bg_sub = processed["preprocessed"]
+
+    # Always save the final, background-subtracted image.
+    stem = in_tif.stem
+    output_path = out_dir / f"{stem}_preprocessed.tif"
+    tiff.imwrite(output_path, bg_sub.astype(np.float32))
+
+    if save_intermediates:
+        raw0 = processed["raw"]
+        ffc = processed["ffc"]
+        destriped = processed["destriped"]
+        field = processed["field"]
+        bg = processed["background"]
+
+        tiff.imwrite(out_dir / f"{stem}_ffc.tif", ffc.astype(np.float32))
+        tiff.imwrite(out_dir / f"{stem}_destriped.tif", destriped.astype(np.float32))
+
+        # np.save(out_dir / f"{stem}_stripe_field.npy", stripe_field)
+
+        save_qc_panel(
+            out_dir / f"{stem}_qc.png",
+            raw=raw0,
+            ffc=ffc,
+            destriped=destriped,
+            bg_sub=bg_sub,
+            field=field,
+            bg=bg,
+        )
 
     return {
         "input": str(in_tif),
-        "output": str(out_dir / f"{stem}_preprocessed.tif"),
-        "offset": float(offset),
+        "output": str(output_path),
+        "save_intermediates": save_intermediates,
+        "offset": processed["offset"],
         "shading_sigma": shading_sigma,
+        "shading_reference_level": shading_reference_level,
+        "shading_max_gain": shading_max_gain,
         "stripe_sigma": stripe_sigma,
         "stripe_level": stripe_level,
         "stripe_wavelet": stripe_wavelet,

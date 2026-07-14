@@ -4,3 +4,10 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 /data/
+/outputs/
+*.tif
+*.xml
+*.log
+*.png
+*.csv
+*.pkl

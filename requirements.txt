@@ -5,4 +5,6 @@ tifffile
 matplotlib
 scikit-image
 seaborn
+ipykernel==5.5.6  # Last ipykernel release compatible with Python 3.6
+ipywidgets==7.6.5  # Interactive feature-filter GUI; compatible with Python 3.6
 # pip install https://github.com/chunglabmit/pystripe/archive/master.zip

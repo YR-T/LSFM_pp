@@ -6,5 +6,7 @@ preprocess_one_image(
     shading_sigma=120,
     stripe_sigma=[128, 256],
     stripe_level=7,
-    stripe_wavelet = 'db2',
-    bg_radius=20)
+    stripe_wavelet='db2',
+    bg_radius=20,
+    save_intermediates=False,
+)

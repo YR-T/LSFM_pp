@@ -1,5 +1,6 @@
 """Run the finalized preprocessing and TrackMate pipeline for unprocessed TIFFs."""
 
+import argparse
 import ctypes
 import hashlib
 import json
@@ -25,6 +26,21 @@ NAME_PATTERN = re.compile(
 PREPROCESS_WORKERS = 24
 TRACKMATE_WORKERS = 6
 TRACKMATE_JAVA_MEMORY = "8g"
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--expected-count",
+        type=int,
+        help="Abort unless this many incomplete datasets are discovered.",
+    )
+    parser.add_argument(
+        "--run-name",
+        default="batch_remaining",
+        help="Status/log directory name created below outputs.",
+    )
+    return parser.parse_args()
 
 
 def set_below_normal_priority():
@@ -165,9 +181,10 @@ def sha256(path):
 
 
 def main():
+    args = parse_args()
     project_root = Path(__file__).resolve().parent.parent
     python = Path(sys.executable).resolve()
-    run_root = project_root / "outputs" / "batch_remaining_20260715_new4"
+    run_root = project_root / "outputs" / args.run_name
     log_dir = run_root / "logs"
     state_path = run_root / "status.json"
     run_root.mkdir(parents=True, exist_ok=True)
@@ -178,8 +195,12 @@ def main():
         for dataset in discover(project_root)
         if not valid_trackmate_dir(dataset)
     ]
-    if len(datasets) != 4:
-        raise RuntimeError("Expected 4 unprocessed TIFFs, found {}".format(len(datasets)))
+    if args.expected_count is not None and len(datasets) != args.expected_count:
+        raise RuntimeError(
+            "Expected {} unprocessed TIFFs, found {}".format(
+                args.expected_count, len(datasets)
+            )
+        )
     total = len(datasets)
     state = {
         "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),

@@ -40,6 +40,11 @@ def parse_args():
         default="batch_remaining",
         help="Status/log directory name created below outputs.",
     )
+    parser.add_argument(
+        "--stop-after-preprocess",
+        action="store_true",
+        help="Run angle estimation and preprocessing only; do not run TrackMate.",
+    )
     return parser.parse_args()
 
 
@@ -190,11 +195,18 @@ def main():
     run_root.mkdir(parents=True, exist_ok=True)
     set_below_normal_priority()
 
-    datasets = [
-        dataset
-        for dataset in discover(project_root)
-        if not valid_trackmate_dir(dataset)
-    ]
+    if args.stop_after_preprocess:
+        datasets = [
+            dataset
+            for dataset in discover(project_root)
+            if not valid_preprocessed_dir(dataset["preprocessed_dir"])
+        ]
+    else:
+        datasets = [
+            dataset
+            for dataset in discover(project_root)
+            if not valid_trackmate_dir(dataset)
+        ]
     if args.expected_count is not None and len(datasets) != args.expected_count:
         raise RuntimeError(
             "Expected {} unprocessed TIFFs, found {}".format(
@@ -206,6 +218,7 @@ def main():
         "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "preprocess_workers": PREPROCESS_WORKERS,
         "trackmate_workers": TRACKMATE_WORKERS,
+        "stop_after_preprocess": args.stop_after_preprocess,
         "datasets": {},
     }
     for dataset in datasets:
@@ -275,6 +288,13 @@ def main():
                 raise RuntimeError("Preprocessed TIFF validation failed.")
             record["preprocessing"] = "complete"
             write_state(state_path, state)
+
+            if args.stop_after_preprocess:
+                record["status"] = "complete"
+                record["finished_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                write_state(state_path, state)
+                print("COMPLETE (preprocessing only): {}".format(stem), flush=True)
+                continue
 
             if valid_trackmate_dir(dataset):
                 print("TrackMate outputs already complete; skipping.", flush=True)

@@ -1,0 +1,133 @@
+{
+  "datasets": 40,
+  "slices_per_dataset": 180,
+  "images_per_collection": 7200,
+  "sample_indices_zero_based": [
+    19,
+    59,
+    99,
+    139,
+    179
+  ],
+  "intensity_mapping": "per-slice percentile 0.5 to 99.8 -> uint8",
+  "jpeg_profiles": [
+    {
+      "name": "full_q80",
+      "linear_scale": 1.0,
+      "quality": 80
+    },
+    {
+      "name": "full_q85",
+      "linear_scale": 1.0,
+      "quality": 85
+    },
+    {
+      "name": "full_q90",
+      "linear_scale": 1.0,
+      "quality": 90
+    },
+    {
+      "name": "half_q85",
+      "linear_scale": 0.5,
+      "quality": 85
+    },
+    {
+      "name": "half_q90",
+      "linear_scale": 0.5,
+      "quality": 90
+    }
+  ],
+  "summary": {
+    "raw": {
+      "full_q80": {
+        "sample_images": 200,
+        "mean_bytes_per_image": 671154.09,
+        "median_bytes_per_image": 360449.0,
+        "p10_bytes_per_image": 193668.6,
+        "p90_bytes_per_image": 1740890.9999999998,
+        "estimated_total_gb_decimal": 4.832309448
+      },
+      "full_q85": {
+        "sample_images": 200,
+        "mean_bytes_per_image": 857834.445,
+        "median_bytes_per_image": 469458.0,
+        "p10_bytes_per_image": 257263.1,
+        "p90_bytes_per_image": 2185982.1,
+        "estimated_total_gb_decimal": 6.176408004
+      },
+      "full_q90": {
+        "sample_images": 200,
+        "mean_bytes_per_image": 1198983.64,
+        "median_bytes_per_image": 711038.5,
+        "p10_bytes_per_image": 397338.19999999995,
+        "p90_bytes_per_image": 2888467.2,
+        "estimated_total_gb_decimal": 8.632682208
+      },
+      "half_q85": {
+        "sample_images": 200,
+        "mean_bytes_per_image": 141381.215,
+        "median_bytes_per_image": 95115.0,
+        "p10_bytes_per_image": 56704.0,
+        "p90_bytes_per_image": 299774.3,
+        "estimated_total_gb_decimal": 1.017944748
+      },
+      "half_q90": {
+        "sample_images": 200,
+        "mean_bytes_per_image": 203721.205,
+        "median_bytes_per_image": 135845.5,
+        "p10_bytes_per_image": 84748.79999999999,
+        "p90_bytes_per_image": 434615.1,
+        "estimated_total_gb_decimal": 1.466792676
+      }
+    },
+    "processed": {
+      "full_q80": {
+        "sample_images": 200,
+        "mean_bytes_per_image": 2776126.435,
+        "median_bytes_per_image": 2931470.5,
+        "p10_bytes_per_image": 1900806.6,
+        "p90_bytes_per_image": 3578913.0,
+        "estimated_total_gb_decimal": 19.988110332
+      },
+      "full_q85": {
+        "sample_images": 200,
+        "mean_bytes_per_image": 3214386.155,
+        "median_bytes_per_image": 3399818.5,
+        "p10_bytes_per_image": 2271712.7,
+        "p90_bytes_per_image": 4045931.4999999995,
+        "estimated_total_gb_decimal": 23.143580316
+      },
+      "full_q90": {
+        "sample_images": 200,
+        "mean_bytes_per_image": 3881245.715,
+        "median_bytes_per_image": 4105530.5,
+        "p10_bytes_per_image": 2885428.7,
+        "p90_bytes_per_image": 4736452.0,
+        "estimated_total_gb_decimal": 27.944969148
+      },
+      "half_q85": {
+        "sample_images": 200,
+        "mean_bytes_per_image": 622401.285,
+        "median_bytes_per_image": 627735.0,
+        "p10_bytes_per_image": 512733.6,
+        "p90_bytes_per_image": 731192.7,
+        "estimated_total_gb_decimal": 4.481289252
+      },
+      "half_q90": {
+        "sample_images": 200,
+        "mean_bytes_per_image": 795523.905,
+        "median_bytes_per_image": 800945.5,
+        "p10_bytes_per_image": 668876.2999999999,
+        "p90_bytes_per_image": 912415.0,
+        "estimated_total_gb_decimal": 5.727772116
+      }
+    },
+    "raw_plus_processed_gb_decimal": {
+      "full_q80": 24.82041978,
+      "full_q85": 29.31998832,
+      "full_q90": 36.577651356,
+      "half_q85": 5.4992339999999995,
+      "half_q90": 7.1945647919999995
+    }
+  }
+}

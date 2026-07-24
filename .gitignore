@@ -12,3 +12,7 @@ __pycache__/
 *.png
 *.csv
 *.pkl
+*.zip
+*.npz
+/viewer/
+/.tmp/
